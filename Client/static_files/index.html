@@ -1,0 +1,26 @@
+<html>
+
+<head>
+	<link rel="stylesheet" href="styles.css" />
+	<script src="./wasm_exec.js"></script>
+</head>
+<body>
+	<div id="container">
+		<div id="canvas-container">
+			<canvas id="grid" width="1000" height="1000"></canvas>
+		</div>
+		<div id="palette-container">
+			<div style="display: flex;">
+				<div id="palette"></div>
+				<button id="zoomOut">-</button>
+				<button id="zoomIn">+</button>
+			</div>
+		</div>
+	</div>
+</body>
+
+<script src="./api.js"></script>
+<script src="./renderer.js"></script>
+<script src="./index.js"></script>
+
+</html>

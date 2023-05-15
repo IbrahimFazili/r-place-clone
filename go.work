@@ -1,0 +1,10 @@
+go 1.19
+
+use (
+	./LambdaFunctions/GetBoard
+	./LambdaFunctions/GetPixel
+	./LambdaFunctions/InitializeRedis
+	./LambdaFunctions/WritePixel
+	./LambdaFunctions/GetUser
+	./Server
+)

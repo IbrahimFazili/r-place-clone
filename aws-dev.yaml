@@ -1,0 +1,718 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A3 Lambda Function Test
+
+Parameters:
+  DesiredCapacity:
+    Type: Number
+    Default: "1"
+    Description: Number of instances to launch in your ECS cluster.
+  MaxSize:
+    Type: Number
+    Default: "1"
+    Description: Maximum number of instances that can be launched in your ECS cluster.
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+    ConstraintDescription: Please choose a valid instance type.
+
+Resources:
+  # ========== Redis ==========
+
+  ElasticacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Elasticache security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: 0.0.0.0/0
+
+  ElasticacheCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: "redis-test-cluster"
+      Engine: redis
+      CacheNodeType: cache.t2.micro
+      NumCacheNodes: 1
+      VpcSecurityGroupIds:
+        - !GetAtt
+          - ElasticacheSecurityGroup
+          - GroupId
+
+  # ========== /api/board lambda ==========
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GetBoard-Lambda-Role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambdaExecute"
+        - "arn:aws:iam::aws:policy/AmazonElastiCacheReadOnlyAccess"
+        - "arn:aws:iam::aws:policy/AmazonEC2FullAccess" # TODO: replace this with limited perms for create/describe/delete network interface
+      Path: "/"
+
+  GetBoardALBTriggerPerm:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt GetBoardLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+
+  GetBoardLambda: # TODO: add security group for this
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Test for /board route
+      Handler: GetBoard
+      Role:
+        Fn::GetAtt: [LambdaExecutionRole, Arn]
+      Runtime: go1.x
+      Environment:
+        Variables:
+          REDIS_ENDPOINT: !GetAtt ElasticacheCluster.RedisEndpoint.Address
+          REDIS_PORT: !GetAtt ElasticacheCluster.RedisEndpoint.Port
+      Code:
+        S3Bucket: "a3-test"
+        S3Key: "GetBoard.zip"
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0fe7398158014f7bd
+        SubnetIds:
+          - subnet-078c2dbb636d885a5
+          - subnet-0077d3e51e304c01d
+      Tags:
+        - Key: Deployment-Catagory
+          Value: Test
+
+
+  # ========== /api/getuser lambda ==========
+
+  GetUserLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GetUser-Lambda-Role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambdaExecute"
+        - "arn:aws:iam::aws:policy/AmazonElastiCacheReadOnlyAccess"
+        - "arn:aws:iam::aws:policy/AmazonEC2FullAccess" # TODO: replace this with limited perms for create/describe/delete network interface
+      Path: "/"
+
+  GetUserALBTriggerPerm:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt GetUserLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+
+  GetUserLambda: # TODO: add security group for this
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Test for /board route
+      Handler: GetUser
+      Role:
+        Fn::GetAtt: [LambdaExecutionRole, Arn]
+      Runtime: go1.x
+      Environment:
+        Variables:
+          REDIS_ENDPOINT: !GetAtt ElasticacheCluster.RedisEndpoint.Address
+          REDIS_PORT: !GetAtt ElasticacheCluster.RedisEndpoint.Port
+      Code:
+        S3Bucket: "a3-test"
+        S3Key: "GetUser.zip"
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0fe7398158014f7bd
+        SubnetIds:
+          - subnet-078c2dbb636d885a5
+          - subnet-0077d3e51e304c01d
+      Tags:
+        - Key: Deployment-Catagory
+          Value: Test
+
+  # ========== initialize-redis lambda ==========
+
+  InitializeRedisLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: InitializeRedis-Lambda-Role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambdaExecute"
+        - "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonEC2FullAccess" # TODO: replace this with limited perms for create/describe/delete network interface
+      Path: "/"
+
+  InitializeRedisLambda: # TODO: add security group for this
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Test for /board route
+      Handler: InitializeRedis
+      Role:
+        Fn::GetAtt: [InitializeRedisLambdaExecutionRole, Arn]
+      Runtime: go1.x
+      Environment:
+        Variables:
+          REDIS_ENDPOINT: !GetAtt ElasticacheCluster.RedisEndpoint.Address
+          REDIS_PORT: !GetAtt ElasticacheCluster.RedisEndpoint.Port
+          AUTHENTICATION_USERNAME: changed_for_privacy
+          AUTHENTICATION_PASSWORD: changed_for_privacy
+          KEYSPACE_NAME: !Ref DBKeyspace
+          KEYSPACE_TABLE: !Select [ 1, !Split [ "|", !Ref DBKeyspaceTable ] ]
+      Code:
+        S3Bucket: "a3-test"
+        S3Key: "InitializeRedis.zip"
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0fe7398158014f7bd
+        SubnetIds:
+          - subnet-078c2dbb636d885a5
+          - subnet-0077d3e51e304c01d
+      Tags:
+        - Key: Deployment-Catagory
+          Value: Test
+
+  # ========== /api/writepixel ==========
+
+  WriteLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: WritePixel-Lambda-Role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambdaExecute"
+        - "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonEC2FullAccess" # TODO: replace this with limited perms for create/describe/delete network interface
+        - "arn:aws:iam::aws:policy/AmazonKeyspacesFullAccess"
+
+      Path: "/"
+
+  WritePixelALBTriggerPerm:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt WritePixelLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+
+  WritePixelLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Test for /board route
+      Handler: WritePixel
+      Role:
+        Fn::GetAtt: [WriteLambdaExecutionRole, Arn]
+      Runtime: go1.x
+      Environment:
+        Variables:
+          REDIS_ENDPOINT: !GetAtt ElasticacheCluster.RedisEndpoint.Address
+          REDIS_PORT: !GetAtt ElasticacheCluster.RedisEndpoint.Port
+          AUTHENTICATION_USERNAME: changed_for_privacy
+          AUTHENTICATION_PASSWORD: changed_for_privacy
+          KEYSPACE_NAME: !Ref DBKeyspace
+          KEYSPACE_TABLE: !Select [ 1, !Split [ "|", !Ref DBKeyspaceTable ] ]
+      Code:
+        S3Bucket: "a3-test"
+        S3Key: "WritePixel.zip"
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0fe7398158014f7bd
+        SubnetIds:
+          - subnet-078c2dbb636d885a5
+          - subnet-0077d3e51e304c01d
+      Tags:
+        - Key: Deployment-Catagory
+          Value: Test
+      Timeout: 6
+
+
+  # ========== /api/getpixel ==========
+
+  GetPixelLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GetPixel-Lambda-Role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSLambdaExecute"
+        - "arn:aws:iam::aws:policy/AmazonEC2FullAccess" # TODO: replace this with limited perms for create/describe/delete network interface
+        - "arn:aws:iam::aws:policy/AmazonKeyspacesFullAccess"
+
+      Path: "/"
+
+  GetPixelALBTriggerPerm:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt GetPixelLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+
+  GetPixelLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Test for /board route
+      Handler: GetPixel
+      Role:
+        Fn::GetAtt: [GetPixelLambdaExecutionRole, Arn]
+      Runtime: go1.x
+      Environment:
+        Variables:
+          AUTHENTICATION_USERNAME: changed_for_privacy
+          AUTHENTICATION_PASSWORD: changed_for_privacy
+          KEYSPACE_NAME: !Ref DBKeyspace
+          KEYSPACE_TABLE: !Select [ 1, !Split [ "|", !Ref DBKeyspaceTable ] ]
+      Code:
+        S3Bucket: "a3-test"
+        S3Key: "GetPixel.zip"
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0fe7398158014f7bd
+        SubnetIds:
+          - subnet-078c2dbb636d885a5
+          - subnet-0077d3e51e304c01d
+      Tags:
+        - Key: Deployment-Catagory
+          Value: Test
+  # ========== Keyspace ==========
+  DBKeyspace:
+    Type: AWS::Cassandra::Keyspace
+    Properties:
+      KeyspaceName: a3_rplace
+
+  DBKeyspaceTable:
+    Type: 'AWS::Cassandra::Table'
+    Properties:
+      KeyspaceName: !Ref DBKeyspace
+      TableName: rplace
+      PartitionKeyColumns:
+      - ColumnName: pixel_x
+        ColumnType: INT
+      - ColumnName: pixel_y
+        ColumnType: INT
+      RegularColumns:
+      - ColumnName: col
+        ColumnType: INT
+      - ColumnName: user
+        ColumnType: TEXT
+
+
+  # ========== ECS Cluster =============
+
+  ECSCluster:
+    Type: "AWS::ECS::Cluster"
+  ECSTaskdefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - Name: golang-r_place-server
+          Cpu: 1
+          MemoryReservation: 128
+          Memory: 256
+          Essential: true
+          Image: "697513084096.dkr.ecr.us-east-1.amazonaws.com/golang-r_place-server:latest"
+          Environment:
+            - Name: "REDIS_ENDPOINT"
+              Value: !GetAtt ElasticacheCluster.RedisEndpoint.Address
+            - Name: "REDIS_PORT"
+              Value: !GetAtt ElasticacheCluster.RedisEndpoint.Port
+          PortMappings:
+            - ContainerPort: 8000
+      NetworkMode: "awsvpc"
+
+  ECSService:
+    Type: "AWS::ECS::Service"
+    DependsOn:
+      - ALBListener
+      - ECSALBListenerRule
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LoadBalancers:
+        - ContainerName: golang-r_place-server
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ECSTG
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref EcsSecurityGroup
+          Subnets:
+            - subnet-078c2dbb636d885a5
+            - subnet-0077d3e51e304c01d
+      TaskDefinition: !Ref ECSTaskdefinition
+
+  EcsSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: vpc-0120b25c2611e2826
+  EcsSecurityGroupHTTPinbound:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      CidrIp: 0.0.0.0/0
+
+  # ========== ALB ==========
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets:
+        - subnet-078c2dbb636d885a5
+        - subnet-0077d3e51e304c01d
+      SecurityGroups:
+        - !GetAtt ALBSecurityGroup.GroupId
+
+  GetUserTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: GetUserALBTriggerPerm
+    Properties:
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt GetUserLambda.Arn
+
+  GetBoardTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: GetBoardALBTriggerPerm
+    Properties:
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt GetBoardLambda.Arn
+
+  WritePixelTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: WritePixelALBTriggerPerm
+    Properties:
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt WritePixelLambda.Arn
+
+  GetPixelTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: GetPixelALBTriggerPerm
+    Properties:
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt GetPixelLambda.Arn
+
+  ALBGetUserListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref GetUserTarget
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/getuser"
+            - "/api/getuser/"
+      ListenerArn: !Ref ALBListener
+      Priority: 5
+
+  ALBGetBoardListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref GetBoardTarget
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/board"
+            - "/api/board/"
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+
+  ALBWritePixelListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WritePixelTarget
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/writepixel"
+            - "/api/writepixel/"
+      ListenerArn: !Ref ALBListener
+      Priority: 2
+
+  ALBGetPixelListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref GetPixelTarget
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/getpixel"
+            - "/api/getpixel/"
+      ListenerArn: !Ref ALBListener
+      Priority: 3
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http on port 80
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: "text/plain"
+            MessageBody: "Not Found"
+            StatusCode: "404"
+
+  ECSALBListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: ALBListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ECSTG
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /ws
+            - /ws/
+            - /healthcheck
+            - /healthcheck/
+      ListenerArn: !Ref ALBListener
+      Priority: 4
+  ECSTG:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    DependsOn: LoadBalancer
+    Properties:
+      TargetType: ip
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /healthcheck
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: ECSTG
+      Port: 8000
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: vpc-0120b25c2611e2826
+
+  ServiceScalingTarget:
+    Type: "AWS::ApplicationAutoScaling::ScalableTarget"
+    DependsOn: ECSService
+    Properties:
+      MaxCapacity: 2
+      MinCapacity: 1
+      ResourceId: !Join
+        - ""
+        - - service/
+          - !Ref ECSCluster
+          - /
+          - !GetAtt
+            - ECSService
+            - Name
+      RoleARN: !GetAtt
+        - AutoscalingRole
+        - Arn
+      ScalableDimension: "ecs:service:DesiredCount"
+      ServiceNamespace: ecs
+  ServiceScalingPolicy:
+    Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
+    Properties:
+      PolicyName: AStepPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceScalingTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 60
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 200
+  ALB500sAlarmScaleUp:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      EvaluationPeriods: "1"
+      Statistic: Average
+      Threshold: "10"
+      AlarmDescription: Alarm if our ALB generates too many HTTP 500s.
+      Period: "60"
+      AlarmActions:
+        - !Ref ServiceScalingPolicy
+      Namespace: AWS/ApplicationELB
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt
+            - LoadBalancer
+            - LoadBalancerFullName
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_ELB_5XX_Count
+
+  ECSAutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      VPCZoneIdentifier:
+        - subnet-078c2dbb636d885a5
+        - subnet-0077d3e51e304c01d
+      LaunchConfigurationName: !Ref EC2ContainerInstances
+      MinSize: 1
+      MaxSize: !Ref MaxSize
+      DesiredCapacity: !Ref DesiredCapacity
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: "true"
+
+  EC2ContainerInstances:
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Properties:
+      ImageId: ami-0fe5f366c083f59ca
+      SecurityGroups:
+        - !Ref EcsSecurityGroup
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      UserData: !Base64
+        "Fn::Join":
+          - ""
+          - - |
+              #!/bin/bash -xe
+            - echo ECS_CLUSTER=
+            - !Ref ECSCluster
+            - |2
+               >> /etc/ecs/ecs.config
+            - |
+              sudo iptables -t nat -L
+              sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8000
+              yum install -y aws-cfn-bootstrap
+            - "/opt/aws/bin/cfn-signal -e $? "
+            - "         --stack "
+            - !Ref "AWS::StackName"
+            - "         --resource ECSAutoScalingGroup "
+            - "         --region "
+            - !Ref "AWS::Region"
+            - |+
+
+  EC2InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2Role
+
+  EC2Role:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ecs:CreateCluster"
+                  - "ecs:DeregisterContainerInstance"
+                  - "ecs:DiscoverPollEndpoint"
+                  - "ecs:Poll"
+                  - "ecs:RegisterContainerInstance"
+                  - "ecs:StartTelemetrySession"
+                  - "ecs:Submit*"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:BatchGetImage"
+                  - "ecr:GetDownloadUrlForLayer"
+                Resource: "*"
+  AutoscalingRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - application-autoscaling.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+      Policies:
+        - PolicyName: service-autoscaling
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "application-autoscaling:*"
+                  - "cloudwatch:DescribeAlarms"
+                  - "cloudwatch:PutMetricAlarm"
+                  - "ecs:DescribeServices"
+                  - "ecs:UpdateService"
+                Resource: "*"
+Outputs:
+  LambdaRoleARN:
+    Description: Role for Lambda execution.
+    Value: !GetAtt LambdaExecutionRole.Arn
+
+  LoadBalancerURL:
+    Description: "Load balancer's public url"
+    Value: !GetAtt LoadBalancer.DNSName
